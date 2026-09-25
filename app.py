@@ -3,7 +3,7 @@ import yfinance as yf
 import google.generativeai as genai
 from urllib.parse import urlparse
 
-# 1. ตั้งค่าหน้าตาของแอป Streamlit (เปิดกว้างเต็มจอ และรองรับมือถือ)
+# 1. ตั้งค่าหน้าตาของแอป Streamlit
 st.set_page_config(
     page_title="AI Stock Analyzer (10D)",
     page_icon="📈",
@@ -16,8 +16,8 @@ st.set_page_config(
 def analyze_stock_with_gemini(api_key, ticker_input, price, pe, f_pe, target, rec, summary, domain):
     genai.configure(api_key=api_key)
     
-    # ลิสต์โมเดลสำรองเผื่อมีการเปลี่ยนเวอร์ชันจาก Google
-    model_names = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
+    # ลิสต์โมเดลรองรับตามลำดับ
+    model_names = ['gemini-3.8-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
     last_error = None
     
     prompt = f"""
@@ -69,7 +69,7 @@ def analyze_stock_with_gemini(api_key, ticker_input, price, pe, f_pe, target, re
         raise last_error
     return "ไม่สามารถดึงข้อมูลจาก AI ได้ กรุณาลองใหม่อีกครั้ง"
 
-# 3. จัดการ API Key (ดึงจาก Secrets หลังบ้านก่อน ถ้าไม่มีค่อยให้ผู้ใช้กรอก)
+# 3. จัดการ API Key
 api_key = st.secrets.get("GEMINI_API_KEY", "")
 
 with st.sidebar:
@@ -77,7 +77,7 @@ with st.sidebar:
     if not api_key:
         api_key = st.text_input("กรอก Gemini API Key:", type="password")
     else:
-        st.success("✅ เชื่อมต่อ Gemini API (Secrets) แล้ว")
+        st.success("✅ เชื่อมต่อ Gemini API แล้ว")
         
     st.markdown("---")
     ticker_input = st.text_input("พิมพ์ชื่อหุ้นที่ต้องการดู:", value="MU").upper()
@@ -88,14 +88,13 @@ st.title("📊 AI Stock Analyzer (10-Dimension Dashboard)")
 
 if btn_analyze:
     if not api_key:
-        st.error("⚠️ ไม่พบ API Key! กรุณากรอก Gemini API Key ที่แถบด้านซ้าย หรือตั้งค่าใน Secrets บน Streamlit Cloud")
+        st.error("⚠️ ไม่พบ API Key! กรุณากรอก Gemini API Key ที่แถบด้านซ้าย")
     else:
         try:
             with st.spinner(f"กำลังดึงข้อมูลหุ้น {ticker_input}..."):
                 stock = yf.Ticker(ticker_input)
                 info = stock.info
 
-                # ดึงตัวเลขสำคัญ
                 price = info.get('currentPrice', info.get('regularMarketPrice', 'N/A'))
                 pe = info.get('trailingPE', 'N/A')
                 f_pe = info.get('forwardPE', 'N/A')
@@ -106,7 +105,6 @@ if btn_analyze:
                 website = info.get('website', '')
                 domain = urlparse(website).netloc.replace('www.', '') if website else f"{ticker_input.lower()}.com"
 
-            # การ์ดแสดงผลตัวเลขการเงิน (Metric Cards)
             col1, col2, col3, col4 = st.columns(4)
             col1.metric("ราคาปัจจุบัน", f"${price}" if price != 'N/A' else 'N/A')
             col2.metric("Trailing P/E", f"{pe:.2f}" if isinstance(pe, (int, float)) else str(pe))
@@ -115,7 +113,6 @@ if btn_analyze:
 
             st.markdown("---")
 
-            # ปุ่มเจาะลึก 7 แหล่งข้อมูลทางเลือก
             st.subheader("🌐 ลิงก์เจาะลึก 7 มิติข้อมูล")
             urls = {
                 "AltIndex (AI Score)": f"https://altindex.com/ticker/{ticker_input.lower()}/ai-stock-analysis",
@@ -136,7 +133,6 @@ if btn_analyze:
 
             st.markdown("---")
 
-            # ส่วนวิเคราะห์ 10 มิติจาก Gemini AI
             st.subheader(f"🤖 รายงานวิเคราะห์เจาะลึก 10 มิติ: [{ticker_input}]")
             
             with st.spinner("กำลังให้ AI ประมวลผลบทวิเคราะห์ 10 มิติ... (กรุณารอประมาณ 5-10 วินาที)"):
@@ -147,6 +143,5 @@ if btn_analyze:
 
         except Exception as e:
             st.error(f"เกิดข้อผิดพลาดในการประมวลผล: {e}")
-
 else:
     st.info("👈 พิมพ์ชื่อหุ้นที่เมนูด้านซ้าย แล้วกดปุ่ม '🚀 เริ่มวิเคราะห์หุ้น' ได้เลยครับ")
