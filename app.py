@@ -110,7 +110,7 @@ if btn_analyze:
 """
 
             with st.spinner("กำลังให้ AI วิเคราะห์ข้อมูล... กรุณารอแปปเดียวนะครับ"):
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                model = genai.GenerativeModel('gemini-2.5-flash')
                 response = model.generate_content(prompt)
                 st.markdown(response.text)
 
