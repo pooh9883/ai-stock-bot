@@ -16,8 +16,8 @@ st.set_page_config(
 def analyze_stock_with_gemini(api_key, ticker_input, price, pe, f_pe, target, rec, summary, domain):
     genai.configure(api_key=api_key)
     
-    # ลิสต์โมเดลรองรับตามลำดับ
-    model_names = ['gemini-3.8-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
+    # อัปเดตรายชื่อโมเดลรุ่นปัจจุบันที่รองรับและใช้งานได้จริง
+    model_names = ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-1.5-flash']
     last_error = None
     
     prompt = f"""
