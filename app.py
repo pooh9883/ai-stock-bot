@@ -3,78 +3,24 @@ import yfinance as yf
 import google.generativeai as genai
 from urllib.parse import urlparse
 
-# ตั้งค่าหน้าตาเว็บ (รองรับมือถือ & Dark Mode)
+# 1. ตั้งค่าหน้าตาของแอป Streamlit (เปิดกว้างเต็มจอ และรองรับมือถือ)
 st.set_page_config(
-    page_title="AI Stock Analyzer 10D",
+    page_title="AI Stock Analyzer (10D)",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# แถบเมนูด้านข้าง (Sidebar)
-with st.sidebar:
-    st.title("⚙️ ตั้งค่าระบบ")
-    api_key = st.text_input("กรอก Gemini API Key:", type="password")
-    st.markdown("---")
-    ticker_input = st.text_input("พิมพ์ชื่อหุ้นที่ต้องการดู:", value="MU").upper()
-    btn_analyze = st.button("🚀 เริ่มวิเคราะห์หุ้น", use_container_width=True)
-
-st.title("📊 AI Stock Analyzer (10-Dimension Dashboard)")
-
-if btn_analyze:
-    if not api_key:
-        st.error("⚠️ กรุณากรอก Gemini API Key ที่แถบเมนูด้านข้างก่อนครับ")
-    else:
-        try:
-            genai.configure(api_key=api_key)
-            stock = yf.Ticker(ticker_input)
-            info = stock.info
-
-            # ดึงข้อมูลการเงินสด
-            price = info.get('currentPrice', info.get('regularMarketPrice', 'N/A'))
-            pe = info.get('trailingPE', 'N/A')
-            f_pe = info.get('forwardPE', 'N/A')
-            target = info.get('targetMeanPrice', 'N/A')
-            rec = str(info.get('recommendationKey', 'N/A')).upper()
-            summary = info.get('longBusinessSummary', '')
-
-            website = info.get('website', '')
-            domain = urlparse(website).netloc.replace('www.', '') if website else f"{ticker_input.lower()}.com"
-
-            # แสดงตัวเลขการเงินเป็น Metric Cards
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric("ราคาปัจจุบัน", f"${price}")
-            col2.metric("Trailing P/E", f"{pe}")
-            col3.metric("Forward P/E", f"{f_pe}")
-            col4.metric("ราคาเป้าหมายเฉลี่ย", f"${target}")
-
-            st.markdown("---")
-
-            # ปุ่มทางด่วนเปิด 7 แหล่งข้อมูล
-            st.subheader("🌐 ลิงก์เจาะลึก 7 มิติข้อมูล")
-            urls = {
-                "AltIndex (AI Score)": f"https://altindex.com/ticker/{ticker_input.lower()}/ai-stock-analysis",
-                "Google Trends": f"https://trends.google.com/explore?q={ticker_input}",
-                "TradingView": f"https://www.tradingview.com/symbols/NASDAQ-{ticker_input}/",
-                "Similarweb": f"https://www.similarweb.com/website/{domain}/",
-                "Unusual Whales": f"https://unusualwhales.com/stock/{ticker_input}/overview?chart=options-volume",
-                "Quiver Quant": f"https://www.quiverquant.com/stock/{ticker_input}/",
-                "Bloomberg Deals": "https://www.bloomberg.com/deals"
-            }
-
-            c1, c2, c3, c4 = st.columns(4)
-            btn_cols = [c1, c2, c3, c4]
-            idx = 0
-            for name, url in urls.items():
-                btn_cols[idx % 4].link_button(name, url, use_container_width=True)
-                idx += 1
-
-            st.markdown("---")
-
-            # สั่ง AI ประมวลผล 10 มิติ + 7 เว็บไซต์
-            st.subheader(f"🤖 รายงานวิเคราะห์เจาะลึก 10 มิติ: [{ticker_input}]")
-            
-            prompt = f"""
+# 2. ฟังก์ชันวิเคราะห์หุ้นด้วย Gemini API พร้อมระบบ Caching (จำผลลัพธ์ 1 ชั่วโมง ป้องกันติด 429 Quota)
+@st.cache_data(ttl=3600, show_spinner=False)
+def analyze_stock_with_gemini(api_key, ticker_input, price, pe, f_pe, target, rec, summary, domain):
+    genai.configure(api_key=api_key)
+    
+    # ลิสต์โมเดลสำรองเผื่อมีการเปลี่ยนเวอร์ชันจาก Google
+    model_names = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash']
+    last_error = None
+    
+    prompt = f"""
 คุณคือนักวิเคราะห์การลงทุนระดับสถาบัน จงวิเคราะห์หุ้น [{ticker_input}] โดยใช้ข้อมูลประกอบดังนี้:
 
 [ข้อมูลราคาและงบการเงินล่าสุด]
@@ -109,12 +55,98 @@ if btn_analyze:
 - สรุปประเมินภาพรวมจากการเชื่อมโยง 7 แหล่งข้อมูลทางเลือก (AltIndex, Google Trends, Similarweb, Unusual Whales, Quiver Quant, TradingView, Bloomberg Deals)
 """
 
-            with st.spinner("กำลังให้ AI วิเคราะห์ข้อมูล... กรุณารอแปปเดียวนะครับ"):
-                model = genai.GenerativeModel('gemini-3.8-flash')
-                response = model.generate_content(prompt)
-                st.markdown(response.text)
+    for m_name in model_names:
+        try:
+            model = genai.GenerativeModel(m_name)
+            response = model.generate_content(prompt)
+            if response and response.text:
+                return response.text
+        except Exception as e:
+            last_error = e
+            continue
+            
+    if last_error:
+        raise last_error
+    return "ไม่สามารถดึงข้อมูลจาก AI ได้ กรุณาลองใหม่อีกครั้ง"
+
+# 3. จัดการ API Key (ดึงจาก Secrets หลังบ้านก่อน ถ้าไม่มีค่อยให้ผู้ใช้กรอก)
+api_key = st.secrets.get("GEMINI_API_KEY", "")
+
+with st.sidebar:
+    st.title("⚙️ ตั้งค่าระบบ")
+    if not api_key:
+        api_key = st.text_input("กรอก Gemini API Key:", type="password")
+    else:
+        st.success("✅ เชื่อมต่อ Gemini API (Secrets) แล้ว")
+        
+    st.markdown("---")
+    ticker_input = st.text_input("พิมพ์ชื่อหุ้นที่ต้องการดู:", value="MU").upper()
+    btn_analyze = st.button("🚀 เริ่มวิเคราะห์หุ้น", use_container_width=True)
+
+# 4. ส่วนแสดงผลหลัก
+st.title("📊 AI Stock Analyzer (10-Dimension Dashboard)")
+
+if btn_analyze:
+    if not api_key:
+        st.error("⚠️ ไม่พบ API Key! กรุณากรอก Gemini API Key ที่แถบด้านซ้าย หรือตั้งค่าใน Secrets บน Streamlit Cloud")
+    else:
+        try:
+            with st.spinner(f"กำลังดึงข้อมูลหุ้น {ticker_input}..."):
+                stock = yf.Ticker(ticker_input)
+                info = stock.info
+
+                # ดึงตัวเลขสำคัญ
+                price = info.get('currentPrice', info.get('regularMarketPrice', 'N/A'))
+                pe = info.get('trailingPE', 'N/A')
+                f_pe = info.get('forwardPE', 'N/A')
+                target = info.get('targetMeanPrice', 'N/A')
+                rec = str(info.get('recommendationKey', 'N/A')).upper()
+                summary = info.get('longBusinessSummary', 'ไม่มีข้อมูลสรุปธุรกิจ')
+
+                website = info.get('website', '')
+                domain = urlparse(website).netloc.replace('www.', '') if website else f"{ticker_input.lower()}.com"
+
+            # การ์ดแสดงผลตัวเลขการเงิน (Metric Cards)
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("ราคาปัจจุบัน", f"${price}" if price != 'N/A' else 'N/A')
+            col2.metric("Trailing P/E", f"{pe:.2f}" if isinstance(pe, (int, float)) else str(pe))
+            col3.metric("Forward P/E", f"{f_pe:.2f}" if isinstance(f_pe, (int, float)) else str(f_pe))
+            col4.metric("ราคาเป้าหมายเฉลี่ย", f"${target}" if target != 'N/A' else 'N/A')
+
+            st.markdown("---")
+
+            # ปุ่มเจาะลึก 7 แหล่งข้อมูลทางเลือก
+            st.subheader("🌐 ลิงก์เจาะลึก 7 มิติข้อมูล")
+            urls = {
+                "AltIndex (AI Score)": f"https://altindex.com/ticker/{ticker_input.lower()}/ai-stock-analysis",
+                "Google Trends": f"https://trends.google.com/explore?q={ticker_input}",
+                "TradingView": f"https://www.tradingview.com/symbols/NASDAQ-{ticker_input}/",
+                "Similarweb": f"https://www.similarweb.com/website/{domain}/",
+                "Unusual Whales": f"https://unusualwhales.com/stock/{ticker_input}/overview?chart=options-volume",
+                "Quiver Quant": f"https://www.quiverquant.com/stock/{ticker_input}/",
+                "Bloomberg Deals": "https://www.bloomberg.com/deals"
+            }
+
+            c1, c2, c3, c4 = st.columns(4)
+            btn_cols = [c1, c2, c3, c4]
+            idx = 0
+            for name, url in urls.items():
+                btn_cols[idx % 4].link_button(name, url, use_container_width=True)
+                idx += 1
+
+            st.markdown("---")
+
+            # ส่วนวิเคราะห์ 10 มิติจาก Gemini AI
+            st.subheader(f"🤖 รายงานวิเคราะห์เจาะลึก 10 มิติ: [{ticker_input}]")
+            
+            with st.spinner("กำลังให้ AI ประมวลผลบทวิเคราะห์ 10 มิติ... (กรุณารอประมาณ 5-10 วินาที)"):
+                report = analyze_stock_with_gemini(
+                    api_key, ticker_input, price, pe, f_pe, target, rec, summary, domain
+                )
+                st.markdown(report)
 
         except Exception as e:
-            st.error(f"เกิดข้อผิดพลาดในการดึงข้อมูล: {e}")
+            st.error(f"เกิดข้อผิดพลาดในการประมวลผล: {e}")
+
 else:
-    st.info(" พิมพ์ชื่อหุ้น API Key mrc test 1' ")
+    st.info("👈 พิมพ์ชื่อหุ้นที่เมนูด้านซ้าย แล้วกดปุ่ม '🚀 เริ่มวิเคราะห์หุ้น' ได้เลยครับ")
