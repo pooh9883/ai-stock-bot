@@ -11,14 +11,37 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 2. ฟังก์ชันวิเคราะห์หุ้นด้วย Gemini API พร้อมระบบ Caching (จำผลลัพธ์ 1 ชั่วโมง ป้องกันติด 429 Quota)
+# 2. ฟังก์ชันค้นหาและเลือกโมเดลที่รองรับใน API Key ของคุณโดยอัตโนมัติ
+def get_working_model(api_key):
+    genai.configure(api_key=api_key)
+    try:
+        # ค้นหาโมเดลทั้งหมดที่บัญชีนี้เรียกใช้ฟังก์ชัน generate_content ได้
+        available_models = []
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                available_models.append(m.name)
+        
+        # จัดลำดับความสำคัญ (เลือกตัวที่เป็น flash หรือ pro ก่อน)
+        for pref in ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']:
+            for model_name in available_models:
+                if pref in model_name:
+                    return model_name
+                    
+        # ถ้าไม่เจอตามเงื่อนไข ให้หยิบตัวแรกที่รองรับมาใช้ทันที
+        if available_models:
+            return available_models[0]
+            
+    except Exception:
+        pass
+        
+    # ค่าสำรองมาตรฐานกรณีดึงรายชื่อไม่สำเร็จ
+    return 'gemini-1.5-flash'
+
+# 3. ฟังก์ชันวิเคราะห์หุ้นด้วย Gemini API (พร้อม Caching ป้องกันติดโควตา)
 @st.cache_data(ttl=3600, show_spinner=False)
 def analyze_stock_with_gemini(api_key, ticker_input, price, pe, f_pe, target, rec, summary, domain):
     genai.configure(api_key=api_key)
-    
-    # ใช้ชื่อโมเดลรุ่นปัจจุบันที่รองรับและเสถียรที่สุด
-    model_names = ['gemini-2.0-flash', 'gemini-1.5-pro']
-    last_error = None
+    target_model = get_working_model(api_key)
     
     prompt = f"""
 คุณคือนักวิเคราะห์การลงทุนระดับสถาบัน จงวิเคราะห์หุ้น [{ticker_input}] โดยใช้ข้อมูลประกอบดังนี้:
@@ -55,21 +78,13 @@ def analyze_stock_with_gemini(api_key, ticker_input, price, pe, f_pe, target, re
 - สรุปประเมินภาพรวมจากการเชื่อมโยง 7 แหล่งข้อมูลทางเลือก (AltIndex, Google Trends, Similarweb, Unusual Whales, Quiver Quant, TradingView, Bloomberg Deals)
 """
 
-    for m_name in model_names:
-        try:
-            model = genai.GenerativeModel(m_name)
-            response = model.generate_content(prompt)
-            if response and response.text:
-                return response.text
-        except Exception as e:
-            last_error = e
-            continue
-            
-    if last_error:
-        raise last_error
+    model = genai.GenerativeModel(target_model)
+    response = model.generate_content(prompt)
+    if response and response.text:
+        return response.text
     return "ไม่สามารถดึงข้อมูลจาก AI ได้ กรุณาลองใหม่อีกครั้ง"
 
-# 3. จัดการ API Key
+# 4. จัดการ API Key
 api_key = st.secrets.get("GEMINI_API_KEY", "")
 
 with st.sidebar:
@@ -83,7 +98,7 @@ with st.sidebar:
     ticker_input = st.text_input("พิมพ์ชื่อหุ้นที่ต้องการดู:", value="MU").upper()
     btn_analyze = st.button("🚀 เริ่มวิเคราะห์หุ้น", use_container_width=True)
 
-# 4. ส่วนแสดงผลหลัก
+# 5. ส่วนแสดงผลหลัก
 st.title("📊 AI Stock Analyzer (10-Dimension Dashboard)")
 
 if btn_analyze:
