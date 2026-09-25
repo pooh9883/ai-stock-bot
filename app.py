@@ -11,37 +11,13 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 2. ฟังก์ชันค้นหาและเลือกโมเดลที่รองรับใน API Key ของคุณโดยอัตโนมัติ
-def get_working_model(api_key):
-    genai.configure(api_key=api_key)
-    try:
-        # ค้นหาโมเดลทั้งหมดที่บัญชีนี้เรียกใช้ฟังก์ชัน generate_content ได้
-        available_models = []
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods:
-                available_models.append(m.name)
-        
-        # จัดลำดับความสำคัญ (เลือกตัวที่เป็น flash หรือ pro ก่อน)
-        for pref in ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro']:
-            for model_name in available_models:
-                if pref in model_name:
-                    return model_name
-                    
-        # ถ้าไม่เจอตามเงื่อนไข ให้หยิบตัวแรกที่รองรับมาใช้ทันที
-        if available_models:
-            return available_models[0]
-            
-    except Exception:
-        pass
-        
-    # ค่าสำรองมาตรฐานกรณีดึงรายชื่อไม่สำเร็จ
-    return 'gemini-1.5-flash'
-
-# 3. ฟังก์ชันวิเคราะห์หุ้นด้วย Gemini API (พร้อม Caching ป้องกันติดโควตา)
+# 2. ฟังก์ชันวิเคราะห์หุ้นด้วย Gemini API (ใช้ gemini-3.8-flash ตามที่ระบบแนะนำ)
 @st.cache_data(ttl=3600, show_spinner=False)
 def analyze_stock_with_gemini(api_key, ticker_input, price, pe, f_pe, target, rec, summary, domain):
     genai.configure(api_key=api_key)
-    target_model = get_working_model(api_key)
+    
+    # ใช้รุ่น gemini-3.8-flash ตามประกาศล่าสุดของ Google
+    target_model = 'gemini-3.8-flash'
     
     prompt = f"""
 คุณคือนักวิเคราะห์การลงทุนระดับสถาบัน จงวิเคราะห์หุ้น [{ticker_input}] โดยใช้ข้อมูลประกอบดังนี้:
@@ -84,7 +60,7 @@ def analyze_stock_with_gemini(api_key, ticker_input, price, pe, f_pe, target, re
         return response.text
     return "ไม่สามารถดึงข้อมูลจาก AI ได้ กรุณาลองใหม่อีกครั้ง"
 
-# 4. จัดการ API Key
+# 3. จัดการ API Key
 api_key = st.secrets.get("GEMINI_API_KEY", "")
 
 with st.sidebar:
@@ -98,7 +74,7 @@ with st.sidebar:
     ticker_input = st.text_input("พิมพ์ชื่อหุ้นที่ต้องการดู:", value="MU").upper()
     btn_analyze = st.button("🚀 เริ่มวิเคราะห์หุ้น", use_container_width=True)
 
-# 5. ส่วนแสดงผลหลัก
+# 4. ส่วนแสดงผลหลัก
 st.title("📊 AI Stock Analyzer (10-Dimension Dashboard)")
 
 if btn_analyze:
