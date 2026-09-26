@@ -2,8 +2,9 @@ import streamlit as st
 import yfinance as yf
 import google.generativeai as genai
 from urllib.parse import urlparse
+import time
 
-# 1. ตั้งค่าหน้าตาของแอป Streamlit
+# 1. ตั้งค่าหน้าตา Streamlit
 st.set_page_config(
     page_title="AI Stock Analyzer (10D)",
     page_icon="📈",
@@ -11,56 +12,43 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# 2. ฟังก์ชันวิเคราะห์หุ้นด้วย Gemini API (ใช้ gemini-3.8-flash ตามที่ระบบแนะนำ)
+# 2. ฟังก์ชันวิเคราะห์หุ้นด้วยโมเดลมาตรฐาน gemini-1.5-flash (ฟรี)
 @st.cache_data(ttl=3600, show_spinner=False)
 def analyze_stock_with_gemini(api_key, ticker_input, price, pe, f_pe, target, rec, summary, domain):
     genai.configure(api_key=api_key)
     
-    # ใช้รุ่น gemini-3.8-flash ตามประกาศล่าสุดของ Google
-    target_model = 'gemini-3.8-flash'
+    # ใช้ gemini-1.5-flash ซึ่งเป็นโมเดลมาตรฐานบน Free Tier
+    model = genai.GenerativeModel('gemini-1.5-flash')
     
     prompt = f"""
-คุณคือนักวิเคราะห์การลงทุนระดับสถาบัน จงวิเคราะห์หุ้น [{ticker_input}] โดยใช้ข้อมูลประกอบดังนี้:
-
-[ข้อมูลราคาและงบการเงินล่าสุด]
+คุณคือนักวิเคราะห์การลงทุนระดับสถาบัน จงวิเคราะห์หุ้น [{ticker_input}] จากข้อมูลดังนี้:
 - ราคาปัจจุบัน: ${price} | Trailing P/E: {pe} | Forward P/E: {f_pe}
-- ราคาเป้าหมายเฉลี่ย: ${target} | คำแนะนำนักวิเคราะห์: {rec}
-- สรุปข้อมูลบริษัท: {summary[:1000]}
+- ราคาเป้าหมายเฉลี่ย: ${target} | คำแนะนำ: {rec}
+- สรุปบริษัท: {summary[:800]}
 
-[กรอบข้อมูลประกอบจาก 7 แหล่งที่คุณต้องนำมาร่วมประเมินวิเคราะห์]
-1. AltIndex: คะแนน AI Score รวมข้อมูลทุกแหล่ง และ Sentiment (Buy/Hold/Sell)
-2. Google Trends: ความสนใจค้นหาชื่อหุ้น/สินค้าบน Google
-3. Similarweb: ยอดทราฟฟิกคนเข้าชมเว็บไซต์บริษัท ({domain})
-4. Unusual Whales: สัญญาณ Options Flow (การซื้อ Call/Put ก้อนใหญ่ผิดปกติ)
-5. Quiver Quant: การซื้อขายของ ส.ส./ส.ว. สหรัฐฯ และสถาบันใหญ่ (Whale)
-6. TradingView: สัญญาณทางเทคนิคัลและราคา
-7. Bloomberg Deals: ข่าวการควบรวมกิจการ (M&A) และการลงทุนใหญ่
-
-คำสั่ง: จงเขียนบทวิเคราะห์จัดหมวดหมู่ให้ชัดเจน อ่านง่าย เป็นข้อๆ ตาม 10 หัวข้อนี้:
-1. โมเดลธุรกิจและการสร้างรายได้ (Business Model & Monetization)
-2. คูเมืองความได้เปรียบที่คู่แข่งเลียนแบบไม่ได้ (Economic Moat)
-3. ความแข็งแกร่งของงบการเงิน กระแสเงินสด และภาระหนี้สิน (Financial Health, Cash Flow & Debt Structure)
-4. ความเสี่ยงเรื่องเทรนด์อนาคตและการถูก Disruption (Disruption Risk & Future Trends)
-5. ความโปร่งใสของผู้บริหารและประสิทธิภาพการจัดสรรเงินทุน (Capital Allocation, ROE/ROIC & Corporate Governance)
+จงเขียนบทวิเคราะห์จัดหมวดหมู่ให้กระชับ อ่านง่าย เป็นข้อๆ ตาม 10 หัวข้อนี้:
+1. โมเดลธุรกิจและการสร้างรายได้
+2. คูเมืองความได้เปรียบ (Economic Moat)
+3. งบการเงิน กระแสเงินสด และหนี้สิน
+4. ความเสี่ยงการถูก Disruption
+5. ประสิทธิภาพผู้บริหารและการจัดสรรทุน (ROE/ROIC)
 6. ปัจจัยเร่ง (Catalysts)
-7. ความคุ้มค่าของราคาปัจจุบันเทียบกับมูลค่าที่แท้จริง และ Margin of Safety (Valuation & MOS)
-8. สัญญาณอันตรายที่เป็นเงื่อนไขในการขายหุ้นทิ้ง (Red Flags & Exit Criteria)
-9. โครงสร้างอำนาจการต่อรอง และความเสี่ยงการพึ่งพาลูกค้า/ซัพพลายเออร์รายใหญ่ (Bargaining Power & Concentration Risk)
-10. ความเป็นวัฏจักรของธุรกิจ และอำนาจในการปรับขึ้นราคา (Cyclicality & Pricing Power)
+7. ความคุ้มค่าของราคา (Valuation & MOS)
+8. สัญญาณอันตราย (Red Flags)
+9. โครงสร้างอำนาจการต่อรอง
+10. ความเป็นวัฏจักรและอำนาจปรับขึ้นราคา
 
 [สรุปปิดท้าย]
-- สรุปกระแสข่าวและสถานะปัจจุบันของหุ้นตัวนี้ไปทาง "ดี" หรือ "แย่"?
-- เหมาะกับการลงทุน "ระยะสั้น (เก็งกำไร)" หรือ "ระยะยาว (ลงทุน)" ดีกว่ากัน พร้อมเหตุผลชัดเจน?
-- สรุปประเมินภาพรวมจากการเชื่อมโยง 7 แหล่งข้อมูลทางเลือก (AltIndex, Google Trends, Similarweb, Unusual Whales, Quiver Quant, TradingView, Bloomberg Deals)
+- สรุปสถานะหุ้นว่า "ดี" หรือ "แย่"?
+- เหมาะกับการลงทุน "ระยะสั้น" หรือ "ระยะยาว" พร้อมเหตุผล?
 """
 
-    model = genai.GenerativeModel(target_model)
     response = model.generate_content(prompt)
     if response and response.text:
         return response.text
     return "ไม่สามารถดึงข้อมูลจาก AI ได้ กรุณาลองใหม่อีกครั้ง"
 
-# 3. จัดการ API Key
+# 3. ตั้งค่าแถบด้านซ้าย
 api_key = st.secrets.get("GEMINI_API_KEY", "")
 
 with st.sidebar:
@@ -71,7 +59,8 @@ with st.sidebar:
         st.success("✅ เชื่อมต่อ Gemini API แล้ว")
         
     st.markdown("---")
-    ticker_input = st.text_input("พิมพ์ชื่อหุ้นที่ต้องการดู:", value="MU").upper()
+    st.markdown("💡 **ทริกค้นหาหุ้น:** หุ้นไทยใส่ `.BK` (เช่น `PTT.BK`) หุ้นสหรัฐพิมพ์ชื่อย่อได้เลย (เช่น `AAPL`, `MU`)")
+    ticker_input = st.text_input("พิมพ์ชื่อหุ้นที่ต้องการดู:", value="MU").upper().strip()
     btn_analyze = st.button("🚀 เริ่มวิเคราะห์หุ้น", use_container_width=True)
 
 # 4. ส่วนแสดงผลหลัก
@@ -80,13 +69,24 @@ st.title("📊 AI Stock Analyzer (10-Dimension Dashboard)")
 if btn_analyze:
     if not api_key:
         st.error("⚠️ ไม่พบ API Key! กรุณากรอก Gemini API Key ที่แถบด้านซ้าย")
+    elif not ticker_input:
+        st.warning("⚠️ กรุณากรอกชื่อหุ้นก่อนกดวิเคราะห์")
     else:
         try:
-            with st.spinner(f"กำลังดึงข้อมูลหุ้น {ticker_input}..."):
+            with st.spinner(f"กำลังค้นหาข้อมูลหุ้น {ticker_input}..."):
                 stock = yf.Ticker(ticker_input)
                 info = stock.info
 
-                price = info.get('currentPrice', info.get('regularMarketPrice', 'N/A'))
+                # ตรวจสอบความถูกต้องของข้อมูลหุ้น
+                if not info or len(info) < 5 or 'regularMarketPrice' not in info and 'currentPrice' not in info:
+                    hist = stock.history(period="1d")
+                    if hist.empty:
+                        st.error(f"❌ไม่พบข้อมูลหุ้น '{ticker_input}' ในระบบ Yahoo Finance กรุณาตรวจสอบชื่อย่ออีกครั้ง (เช่น หุ้นไทยต้องใส่ .BK)")
+                        st.stop()
+                    price = hist['Close'].iloc[-1]
+                else:
+                    price = info.get('currentPrice', info.get('regularMarketPrice', 'N/A'))
+
                 pe = info.get('trailingPE', 'N/A')
                 f_pe = info.get('forwardPE', 'N/A')
                 target = info.get('targetMeanPrice', 'N/A')
@@ -105,13 +105,14 @@ if btn_analyze:
             st.markdown("---")
 
             st.subheader("🌐 ลิงก์เจาะลึก 7 มิติข้อมูล")
+            clean_ticker = ticker_input.replace('.BK', '')
             urls = {
-                "AltIndex (AI Score)": f"https://altindex.com/ticker/{ticker_input.lower()}/ai-stock-analysis",
-                "Google Trends": f"https://trends.google.com/explore?q={ticker_input}",
-                "TradingView": f"https://www.tradingview.com/symbols/NASDAQ-{ticker_input}/",
+                "AltIndex (AI Score)": f"https://altindex.com/ticker/{clean_ticker.lower()}/ai-stock-analysis",
+                "Google Trends": f"https://trends.google.com/explore?q={clean_ticker}",
+                "TradingView": f"https://www.tradingview.com/symbols/{ticker_input}/",
                 "Similarweb": f"https://www.similarweb.com/website/{domain}/",
-                "Unusual Whales": f"https://unusualwhales.com/stock/{ticker_input}/overview?chart=options-volume",
-                "Quiver Quant": f"https://www.quiverquant.com/stock/{ticker_input}/",
+                "Unusual Whales": f"https://unusualwhales.com/stock/{clean_ticker}/overview?chart=options-volume",
+                "Quiver Quant": f"https://www.quiverquant.com/stock/{clean_ticker}/",
                 "Bloomberg Deals": "https://www.bloomberg.com/deals"
             }
 
